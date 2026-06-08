@@ -1,6 +1,7 @@
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useMemo } from "react";
 import { useForm, useWatch, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
+import { useQuery } from "@tanstack/react-query";
 import BaseIcon from "@/components/BaseIcon";
 import TokenSelectModal from "./CurrencyModal";
 
@@ -8,6 +9,24 @@ import type { ApiPrice } from "@/models/Api";
 import type { SwapFormProps } from "@/models/CmpProps";
 import { createSwapSchema, type SwapFormValues } from "../schemas/swap.schema";
 import SwapSuccess from "./SwapSuccess";
+
+const fetchTokenPrices = async ({ signal }: { signal: AbortSignal }) => {
+  const response = await fetch("https://interview.switcheo.com/prices.json", {
+    signal,
+  });
+
+  if (!response.ok) {
+    throw new Error("Network error");
+  }
+  const data: ApiPrice[] = await response.json();
+
+  return data.reduce((acc: Record<string, number>, item) => {
+    if (item.price > 0) {
+      acc[item.currency] = item.price;
+    }
+    return acc;
+  }, {});
+};
 
 export const SwapForm: React.FC<SwapFormProps> = ({
   balances,
@@ -17,10 +36,18 @@ export const SwapForm: React.FC<SwapFormProps> = ({
   onConfirmSwap,
   onReset,
 }) => {
-  const [prices, setPrices] = useState<Record<string, number>>({});
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [modalTarget, setModalTarget] = useState<"from" | "to" | null>(null);
+
+  const {
+    data: prices = {},
+    isLoading,
+    error,
+  } = useQuery({
+    queryKey: ["tokenPrices"],
+    queryFn: fetchTokenPrices,
+    staleTime: 1000 * 60 * 5, // cache data in 5 min to avoid call api again
+    retry: 2,
+  });
 
   const resolver = useMemo(
     () => zodResolver(createSwapSchema(balances)),
@@ -141,7 +168,7 @@ export const SwapForm: React.FC<SwapFormProps> = ({
     if (error) {
       return (
         <div className="w-full max-w-[480px] bg-[#181a20] rounded-3xl p-6 mx-auto border border-red-900 text-center text-red-400">
-          {error}
+          Failed to load live prices. Please check your connection.
         </div>
       );
     }
@@ -281,33 +308,6 @@ export const SwapForm: React.FC<SwapFormProps> = ({
       </form>
     );
   };
-
-  useEffect(() => {
-    const fetchPrices = async () => {
-      try {
-        const response = await fetch(
-          "https://interview.switcheo.com/prices.json",
-        );
-        if (!response.ok) {
-          throw new Error("Network error");
-        }
-        const data: ApiPrice[] = await response.json();
-        const priceMap = data.reduce((acc: Record<string, number>, item) => {
-          if (item.price > 0) {
-            acc[item.currency] = item.price;
-          }
-          return acc;
-        }, {});
-
-        setPrices(priceMap);
-      } catch (err) {
-        setError("Failed to load live prices.");
-      } finally {
-        setIsLoading(false);
-      }
-    };
-    fetchPrices();
-  }, []);
 
   return (
     <>
