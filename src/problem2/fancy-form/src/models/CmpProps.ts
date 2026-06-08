@@ -29,3 +29,7 @@ export interface SwapFormProps {
   onConfirmSwap: (data: SwapData) => Promise<void>;
   onReset: () => void;
 }
+
+export interface WalletBalancesProps {
+  balances: Record<string, number>;
+}
